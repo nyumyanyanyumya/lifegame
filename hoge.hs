@@ -1,21 +1,38 @@
+import LifeGame
 import qualified Data.Map as Map
 import System.IO
 
-calcOverlay :: [Int] -> Map.Map [Int] Int -> Map.Map [Int] Int
-calcOverlay key plots = let incRes = Map.mapKeys (zipWith (+) key) plots
-                            decRes = Map.mapKeys (zipWith (flip (-)) key) plots
-                        in  foldr (Map.unionWith (+)) plots [incRes,decRes]
+convertLine :: Handle -> IO [[Int]]
+convertLine handle = do
+  eof <- hIsEOF handle
+  result <- if eof then
+              return []
+            else
+              do
+                contents <- hGetLine handle
+                next <- convertLine handle
+                let converted = map (\ x -> read [x] :: Int ) contents
+                return (converted : next)
+  return result
 
-calcNeighbor :: Map.Map [Int] Int -> Map.Map [Int] Int
-calcNeighbor plots = let result = calcOverlay [1,0] $ calcOverlay [0,1] plots
-                      in Map.intersectionWith (-) result plots
+initialData = do
+  withFile "hoge.txt" ReadMode $ \handle -> do
+    convertLine handle
 
-calcNextGen :: Map.Map [Int] Int -> Map.Map [Int] Int
-calcNextGen plots = Map.unionWith nextGenCell plots $ calcNeighbor plots
+convertFromInput f c acc = acc ++ [f c $ length acc]
+genUnitData x c y = ([x, y], c)
 
-nextGenCell :: Int -> Int -> Int
-nextGenCell cur ngb
-  | ngb < 2              = 0
-  | cur == 0 && ngb == 3 = 1
-  | ngb < 4              = cur
-  | otherwise            = 0
+piyo plots =
+  Map.elems $ Map.foldrWithKey (\key value acc -> Map.insertWith (++) (key !! 0) [value] acc) Map.empty plots
+
+output (index,plots) =
+  withFile ("gen_" ++ show index ++ ".txt") WriteMode $ \handle -> do
+    mapM ((hPutStrLn handle) . foldr (++) "" . map show) plots 
+    return ()
+
+huga = do
+  input <- initialData
+  let converted = Map.fromList $ foldr (++) [] $ foldr (convertFromInput (\c len -> foldr (convertFromInput $ genUnitData $ len) [] c)) [] input
+  let result = take 10 $ iterate calcNextGen converted
+  mapM output $ zip [1..] $ map piyo result
+  return ()
